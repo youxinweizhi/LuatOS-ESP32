@@ -10,7 +10,7 @@
 #include "esp_err.h"
 #include "esp_spiffs.h"
 #include "esp_system.h"
-#include "esp32c3/rom/ets_sys.h"
+#include "esp32s3/rom/ets_sys.h"
 #include "esp_heap_caps.h"
 
 static const luaL_Reg loadedlibs[] = {
@@ -33,11 +33,11 @@ static const luaL_Reg loadedlibs[] = {
     {"timer", luaopen_timer}, // 延时库
     {"gpio", luaopen_gpio},   // GPIO脚的操作
     {"adc", luaopen_adc},     // ADC库
-    {"i2c", luaopen_i2c},     // I2C操作
+    // {"i2c", luaopen_i2c},     // I2C操作
     // {"spi", luaopen_spi},     // SPI操作
-    {"uart",luaopen_uart},    // UART操作
-    {"pwm",luaopen_pwm},      // PWM操作
-    {"wlan", luaopen_wlan},   // wlan/wifi联网操作
+    // {"uart",luaopen_uart},    // UART操作
+    // {"pwm",luaopen_pwm},      // PWM操作
+    // {"wlan", luaopen_wlan},   // wlan/wifi联网操作
     // {"lwip",luaopen_lwip},    // lwip操作
     // {"ble",luaopen_ble},      // ble操作
     {NULL, NULL}};
@@ -75,7 +75,7 @@ void luat_os_reboot(int code)
 
 const char *luat_os_bsp(void)
 {
-  return "ESP32C3";
+  return "ESP32S3";
 }
 
 void luat_os_standy(int timeout)

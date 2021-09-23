@@ -11,7 +11,7 @@
 #include "nvs_flash.h"
 #include "esp_bt.h"
 
-#define LUAT_HEAP_SIZE (64*1024)
+#define LUAT_HEAP_SIZE (100*1024)
 uint8_t luavm_heap[LUAT_HEAP_SIZE] = {0};
 
 
