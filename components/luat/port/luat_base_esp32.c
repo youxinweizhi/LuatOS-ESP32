@@ -22,24 +22,27 @@ static const luaL_Reg loadedlibs[] = {
     {LUA_OSLIBNAME, luaopen_os},        // os库,已精简
     {LUA_STRLIBNAME, luaopen_string},   // string库,字符串操作
     {LUA_MATHLIBNAME, luaopen_math},    // math 数值计算
-                                        //  {LUA_UTF8LIBNAME, luaopen_utf8},
     {LUA_DBLIBNAME, luaopen_debug},     // debug库,已精简
 #if defined(LUA_COMPAT_BITLIB)
     {LUA_BITLIBNAME, luaopen_bit32}, // 不太可能启用
 #endif
-    // 往下是RTT环境下加载的库
     {"rtos", luaopen_rtos},   // rtos底层库, 核心功能是队列和定时器
     {"log", luaopen_log},     // 日志库
     {"timer", luaopen_timer}, // 延时库
+    {"crypto", luaopen_crypto},// 加密和hash库
+    {"json", luaopen_cjson},   // json的序列化和反序列化
+    {"zbuff",luaopen_zbuff},  // zbuff
     {"gpio", luaopen_gpio},   // GPIO脚的操作
     {"adc", luaopen_adc},     // ADC库
-    // {"i2c", luaopen_i2c},     // I2C操作
-    // {"spi", luaopen_spi},     // SPI操作
-    // {"uart",luaopen_uart},    // UART操作
-    // {"pwm",luaopen_pwm},      // PWM操作
-    // {"wlan", luaopen_wlan},   // wlan/wifi联网操作
-    // {"lwip",luaopen_lwip},    // lwip操作
+    {"i2c", luaopen_i2c},     // I2C操作
+    {"spi", luaopen_spi},     // SPI操作
+    {"uart",luaopen_uart},    // UART操作
+    {"pwm",luaopen_pwm},      // PWM操作
+    {"wlan", luaopen_wlan},   // wlan/wifi联网操作
+    {"lwip",luaopen_lwip},    // lwip操作
     // {"ble",luaopen_ble},      // ble操作
+    // {"espnow",luaopen_espnow},// espnow操作
+    // {"rmt",luaopen_rmt},      // rmt操作
     {NULL, NULL}};
 
 // 按不同的rtconfig加载不同的库函数
