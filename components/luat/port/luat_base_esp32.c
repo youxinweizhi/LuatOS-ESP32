@@ -53,6 +53,7 @@ static const luaL_Reg loadedlibs[] = {
     {"esp32",luaopen_esp32},  // esp32专用库
     {"pwm2",luaopen_pwm2},    // pwm2
     {"socket",luaopen_socket},// socket
+    {"http",luaopen_http},
     {NULL, NULL}};
 
 // 按不同的rtconfig加载不同的库函数
