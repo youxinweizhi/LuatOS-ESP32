@@ -1,8 +1,6 @@
 name: c3
 on:
   push:
-    tags:
-      - v*
 
 jobs:
   build:
