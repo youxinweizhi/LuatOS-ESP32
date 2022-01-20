@@ -1,6 +1,8 @@
 name: c3
 on:
   push:
+    tags:
+      - v*
 
 jobs:
   build:
@@ -18,7 +20,7 @@ jobs:
       - name: get LuatOS repo
         run: |
           cd ..
-          git clone https://github.com/openLuat/LuatOS
+          git clone https://github.com/youxinweizhi/LuatOS
       - name: build c3
         run: |
           source ~/esp/esp-idf/export.sh
