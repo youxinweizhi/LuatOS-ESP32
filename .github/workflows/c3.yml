@@ -1,14 +1,28 @@
-name: c3
+name: dev_esp32c3
+#触发条件：创建新的tag时
 on:
   push:
     tags:
       - v*
-
+      
+#任务
 jobs:
   build:
     runs-on: ubuntu-20.04
     steps:
+      #下载项目
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - run: git checkout dev_esp32c3       
+      
+      #安装python环境
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7      
+      
+      #克隆idf4.3.2
       - name: get esp-idf
         run: |
           pip3 install --upgrade pip
@@ -17,16 +31,19 @@ jobs:
           git clone -b v4.3.2 --recursive https://github.com/espressif/esp-idf.git
           cd ~/esp/esp-idf
           ./install.sh esp32c3
+      #克隆LUTOS项目
       - name: get LuatOS repo
         run: |
           cd ..
-          git clone https://github.com/openLuat/LuatOS
+          git clone https://github.com/youxinweizhi/LuatOS
+      #编译固件
       - name: build c3
         run: |
           source ~/esp/esp-idf/export.sh
           idf.py --version
           idf.py set-target esp32c3
           idf.py build
+      #打包固件
       - name: pack firmware
         run: |
           pip3 install -r tools/requirements.txt
@@ -36,8 +53,16 @@ jobs:
           cd ..
           mkdir firmware
           mv tools/* firmware
+      #暴露固件路径
       - name: Upload firmware
         uses: actions/upload-artifact@main
         with:
           name: c3-release
           path: firmware/
+      #执行py脚本        
+      - name: exec python
+        env:
+          MAILUSER: ${{ secrets.MAILUSER}}
+          MAILPWD: ${{ secrets.MAILPWD}}
+        run: |
+          python tools/sendmail.py  "firmware/LuatOS-SoC_esp32c3_V0001.soc" 
