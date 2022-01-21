@@ -29,7 +29,8 @@ jobs:
       - name: get LuatOS repo
         run: |
           cd ..
-          git clone https://github.com/youxinweizhi/LuatOS
+          git clone https://gitee.com/openLuat/LuatOS.git
+          
       #编译固件
       - name: build c3
         run: |
