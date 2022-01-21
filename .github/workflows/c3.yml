@@ -12,13 +12,10 @@ jobs:
     steps:
       #下载项目
       - uses: actions/checkout@v2
-      
-      #安装python环境
-      - name: Set up Python 3.7
-        uses: actions/setup-python@v1
         with:
-          python-version: 3.7      
-      
+          fetch-depth: 0
+      - run: git checkout dev_esp32c3       
+         
       #克隆idf4.3.2
       - name: get esp-idf
         run: |
@@ -56,6 +53,12 @@ jobs:
         with:
           name: c3-release
           path: firmware/
+          
+      #安装python环境
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7   
       #执行py脚本        
       - name: exec python
         env:
