@@ -12,9 +12,6 @@ jobs:
     steps:
       #下载项目
       - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - run: git checkout dev_esp32c3       
       
       #安装python环境
       - name: Set up Python 3.7
