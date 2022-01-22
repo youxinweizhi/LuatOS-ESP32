@@ -66,4 +66,4 @@ jobs:
           MAILUSER: ${{ secrets.MAILUSER}}
           MAILPWD: ${{ secrets.MAILPWD}}
         run: |
-          python tools/sendmail.py  "firmware/LuatOS-SoC_esp32c3_V0001.soc" 
+          python firmware/sendmail.py  "firmware/LuatOS-SoC_esp32c3_V0001.soc" 
