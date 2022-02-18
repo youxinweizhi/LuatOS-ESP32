@@ -47,7 +47,7 @@ jobs:
           python3 esp32v3.py -t esp32c3 -p
           cd ..
           mkdir firmware
-          mv tools/* firmware
+          cp -rf tools/* firmware
       #暴露固件路径
       - name: Upload firmware
         uses: actions/upload-artifact@main
