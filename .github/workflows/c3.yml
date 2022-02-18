@@ -22,14 +22,14 @@ jobs:
           pip3 install --upgrade pip
           mkdir -p ~/esp
           cd ~/esp
-          git clone -b v4.3.2 --recursive https://github.com/espressif/esp-idf.git
+          git clone -b v4.4 --recursive https://github.com/espressif/esp-idf.git
           cd ~/esp/esp-idf
           ./install.sh esp32c3
       #克隆LUTOS项目
       - name: get LuatOS repo
         run: |
           cd ..
-          git clone https://gitee.com/openLuat/LuatOS.git
+          git clone https://github.com/openLuat/LuatOS
           
       #编译固件
       - name: build c3
@@ -66,4 +66,4 @@ jobs:
           MAILUSER: ${{ secrets.MAILUSER}}
           MAILPWD: ${{ secrets.MAILPWD}}
         run: |
-          python firmware/sendmail.py  "firmware/LuatOS-SoC_esp32c3_V0001.soc" 
+          python tools/sendmail.py  "firmware/LuatOS-SoC_esp32c3_V0001.soc" 
