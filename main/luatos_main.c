@@ -15,6 +15,8 @@
 #include "luat_msgbus.h"
 #include "luat_gpio.h"
 #include "luat_uart.h"
+#include "luat_shell.h"
+#include "luat_cmux.h"
 
 #ifdef LUAT_USE_LVGL
 #include "lvgl.h"
@@ -73,13 +75,53 @@ static void gpio_irq_task(void *arg)
     vTaskDelete(NULL);
 }
 
-
+static xQueueHandle uart0_evt_queue = NULL;
+static void uart0_irq_task(void *arg)
+{
+    uart_event_t event = {0};
+#ifndef LUAT_USE_SHELL
+    rtos_msg_t msg = {0};
+#endif
+    char buffer[1024] = {0};
+    int len = 0;
+    while (true)
+    {
+        if (xQueueReceive(uart0_evt_queue, (void *)&event, (portTickType)portMAX_DELAY))
+        {
+            if (event.timeout_flag || event.size > (1024 * 2 - 200))
+            {
+#ifdef LUAT_USE_SHELL
+                len = uart_read_bytes(0, buffer, 1024, 10 / portTICK_RATE_MS);
+                luat_shell_push(buffer, len);
+#else
+                msg.handler = l_uart_handler;
+                msg.ptr = NULL;
+                msg.arg1 = 0; //uart0
+                msg.arg2 = 1; //recv
+                luat_msgbus_put(&msg, 0);
+#endif
+                xQueueReset(uart0_evt_queue);
+            }
+        }
+    }
+    vTaskDelete(NULL);
+}
 
 void app_main(void)
 {
-    uint8_t mac[6] = {0};
-    esp_read_mac(&mac, ESP_MAC_WIFI_STA);
+#ifdef LUAT_USE_DBG
+    // 如果使能debug,需要高一点的波特率
+    uart_set_baudrate(0, 2000000);
+#endif
+    // uart0是log口,早开一下中断会不会更好呢？？
+    uart_driver_install(0, 1024 * 2, 1024 * 2, 20, &uart0_evt_queue, 0);
+    uart_pattern_queue_reset(0, 20);
+    xTaskCreate(uart0_irq_task, "uart0_irq_task", 4096, NULL, 10, NULL);
+
+    uint8_t *mac = malloc(10);
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
     printf("\nMac:%02x%02x%02x%02x%02x%02x\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    free(mac);
 
 #ifdef CONFIG_SPIRAM
     psram_size_t t = psram_get_size();
@@ -125,5 +167,6 @@ void app_main(void)
     xTimerStart(os_timer, 0);
 #endif
 
+    // xTaskCreate(luat_main, "luat_main", 16384, NULL, 12, NULL);
     luat_main();
 }

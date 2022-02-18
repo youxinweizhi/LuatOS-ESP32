@@ -22,6 +22,8 @@
 #define LUAT_USE_GPIO 1
 #define LUAT_USE_I2C  1
 #define LUAT_USE_SPI  1
+// #define LUAT_USE_TWAI 1
+// #define LUAT_USE_I2S 1
 #define LUAT_USE_ADC  1
 #define LUAT_USE_PWM  1
 #define LUAT_USE_PWM2  1
@@ -33,13 +35,10 @@
 #define LUAT_USE_SOCKET 1
 #define LUAT_USE_NTP 1
 // #define LUAT_USE_LWIP 1
-// #define LUAT_USE_BLE 1
+#define LUAT_USE_BLE 1
 #define LUAT_USE_ESPHTTP 1
 #define LUAT_USE_ESPMQTT 1
-
-// #define LUAT_USE_MCU  1
-// hwtimer库对lua代码没多少用处,通常禁用
-// #define LUAT_USE_HWTIMER  1
+#define LUAT_USE_MCU  1
 #define LUAT_USE_RTC 1
 
 
@@ -64,12 +63,12 @@
 //----------------------------
 // 高级功能, 其中shell是推荐启用, 除非你打算uart0也读数据
 // #define LUAT_USE_SHELL 1
-// NIMBLE 是蓝牙功能, 名为BLE, 但绝非低功耗.
-// #define LUAT_USE_NIMBLE 1
+// 高级功能, debug
+// #define LUAT_USE_DBG 1
 // FDB 提供kv数据库, 与nvm库类似
 // #define LUAT_USE_FDB 1
-// 多虚拟机支持,实验性,一般不启用
-// #define LUAT_USE_VMX 1
+#define LUAT_USE_OTA
+#define UPDATE_BIN_PATH "/spiffs/update.bin"
 
 //---------------------
 // UI

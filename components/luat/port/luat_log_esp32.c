@@ -13,40 +13,27 @@ static uint8_t luat_log_level_cur = LUAT_LOG_DEBUG;
 #define LOGLOG_SIZE 1024
 static char log_printf_buff[LOGLOG_SIZE]  = {0};
 
-#include "esp_log.h"
-
 void luat_log_set_uart_port(int port) {
     luat_log_uart_port = port;
 }
 
-// void luat_nprint(char *s, size_t l) {
-// #ifdef LUAT_USE_SHELL
-//     if (cmux_state == 1 && cmux_log_state ==1){
-//         luat_cmux_write(LUAT_CMUX_CH_LOG,  CMUX_FRAME_UIH & ~ CMUX_CONTROL_PF,s, l);
-//     }else
-// #endif
-//     luat_uart_write(luat_log_uart_port, s, l);
-// }
-
-// void luat_log_write(char *s, size_t l) {
-// #ifdef LUAT_USE_SHELL
-//     if (cmux_state == 1 && cmux_log_state ==1){
-//         luat_cmux_write(LUAT_CMUX_CH_LOG,  CMUX_FRAME_UIH & ~ CMUX_CONTROL_PF,s, l);
-//     }else
-// #endif
-//     luat_uart_write(luat_log_uart_port, s, l);
-// }
-
-void luat_nprint(char *s, size_t l)
-{
-  printf("%s", s);
+void luat_nprint(char *s, size_t l) {
+#ifdef LUAT_USE_SHELL
+    if (cmux_state == 1 && cmux_log_state ==1){
+        luat_cmux_write(LUAT_CMUX_CH_LOG,  CMUX_FRAME_UIH & ~ CMUX_CONTROL_PF,s, l);
+    }else
+#endif
+    luat_uart_write(luat_log_uart_port, s, l);
 }
 
-void luat_log_write(char *s, size_t l)
-{
-  printf("%s", s);
+void luat_log_write(char *s, size_t l) {
+#ifdef LUAT_USE_SHELL
+    if (cmux_state == 1 && cmux_log_state ==1){
+        luat_cmux_write(LUAT_CMUX_CH_LOG,  CMUX_FRAME_UIH & ~ CMUX_CONTROL_PF,s, l);
+    }else
+#endif
+    luat_uart_write(luat_log_uart_port, s, l);
 }
-
 
 void luat_log_set_level(int level) {
     luat_log_level_cur = level;
@@ -62,7 +49,6 @@ int luat_log_get_level() {
 void luat_log_log(int level, const char* tag, const char* _fmt, ...) {
     if (luat_log_level_cur > level) return;
     char *tmp = (char *)log_printf_buff;
-    memset(tmp, 0, 1024);
     switch (level)
         {
         case LUAT_LOG_DEBUG:

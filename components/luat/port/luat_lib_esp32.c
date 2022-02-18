@@ -1,3 +1,9 @@
+/*
+@module  esp32
+@summary esp32专用库
+@version 1.0
+@date    2022.2.15
+*/
 #include "luat_base.h"
 
 #include "esp_log.h"
@@ -21,15 +27,16 @@ esp32.getmac(0)
 static int l_esp32_getmac(lua_State *L)
 {
     int type = luaL_optinteger(L, 1, 0);
-    uint8_t mac[6] = {0};
-    esp_read_mac(&mac, type);
+    uint8_t *mac = malloc(10);
+    esp_read_mac(mac, type);
     lua_pushlstring(L, (const char *)mac, 6);
+    free(mac);
     return 1;
 }
 
 /*
 获取重启原因
-@api esp32.getRstReason(id)
+@api esp32.getRstReason()
 @return int esp_reset_reason_t
 @usage
 esp32.getRstReason()
@@ -44,9 +51,9 @@ static int l_esp32_get_rst_reason(lua_State *L)
 /*
 获取随机数
 @api esp32.random()
-@return number
+@return int 随机数
 @usage
-esp32.random()
+r = esp32.random()
 */
 static int l_esp32_random(lua_State *L)
 {
@@ -58,7 +65,7 @@ static int l_esp32_random(lua_State *L)
 /*
 获取chip信息
 @api esp32.getchip()
-@return table
+@return table chip信息表
 @usage
 local re = esp32.getchip()
 log.info("esp32", "chip", re['chip'])
@@ -95,7 +102,7 @@ static int l_esp32_get_chip(lua_State *L)
 /*
 获取唤醒原因
 @api esp32.getWakeupCause()
-@return int reason
+@return int esp_sleep_wakeup_cause_t
 @usage
 cause = esp32.getWakeupCause()
 */

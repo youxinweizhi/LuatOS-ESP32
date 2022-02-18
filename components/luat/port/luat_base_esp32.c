@@ -30,6 +30,8 @@ LUAMOD_API int luaopen_ble(lua_State *L);
 LUAMOD_API int luaopen_ntp(lua_State *L);
 LUAMOD_API int luaopen_esphttp(lua_State *L);
 LUAMOD_API int luaopen_espmqtt(lua_State *L);
+LUAMOD_API int luaopen_i2s(lua_State *L);
+LUAMOD_API int luaopen_twai(lua_State *L);
 
 static const luaL_Reg loadedlibs[] = {
     {"_G", luaopen_base},               // _G
@@ -44,7 +46,12 @@ static const luaL_Reg loadedlibs[] = {
 #if defined(LUA_COMPAT_BITLIB)
     {LUA_BITLIBNAME, luaopen_bit32}, // 不太可能启用
 #endif
-
+#ifdef LUAT_USE_DBG
+#ifndef LUAT_USE_SHELL
+#define LUAT_USE_SHELL
+#endif
+    {"dbg", luaopen_dbg}, // 调试库
+#endif
     // 往下是LuatOS定制的库, 如需精简请仔细测试
     //----------------------------------------------------------------------
     // 核心支撑库, 不可禁用!!
@@ -64,6 +71,12 @@ static const luaL_Reg loadedlibs[] = {
 #endif
 #ifdef LUAT_USE_SPI
     {"spi", luaopen_spi}, // SPI操作
+#endif
+#ifdef LUAT_USE_TWAI    
+    {"twai", luaopen_twai}, // twai操作
+#endif
+#ifdef LUAT_USE_I2S
+    {"i2s", luaopen_i2s}, // I2S操作
 #endif
 #ifdef LUAT_USE_ADC
     {"adc", luaopen_adc}, // ADC模块
@@ -182,42 +195,43 @@ static const luaL_Reg loadedlibs[] = {
 // 按不同的rtconfig加载不同的库函数
 void luat_openlibs(lua_State *L)
 {
-  // 初始化队列服务
-  luat_msgbus_init();
-  //print_list_mem("done>luat_msgbus_init");
-  // 加载系统库
-  const luaL_Reg *lib;
-  /* "require" functions from 'loadedlibs' and set results to global table */
-  for (lib = loadedlibs; lib->func; lib++)
-  {
-    luaL_requiref(L, lib->name, lib->func, 1);
-    lua_pop(L, 1); /* remove lib */
-                   //extern void print_list_mem(const char* name);
-                   //print_list_mem(lib->name);
-  }
+    // 初始化队列服务
+    luat_msgbus_init();
+    //print_list_mem("done>luat_msgbus_init");
+    // 加载系统库
+    const luaL_Reg *lib;
+    /* "require" functions from 'loadedlibs' and set results to global table */
+    for (lib = loadedlibs; lib->func; lib++)
+    {
+        luaL_requiref(L, lib->name, lib->func, 1);
+        lua_pop(L, 1); /* remove lib */
+                       //extern void print_list_mem(const char* name);
+                       //print_list_mem(lib->name);
+    }
 }
 
 // 微妙硬延时
 void luat_timer_us_delay(size_t us)
 {
-  if (us > 0)
-    ets_delay_us(us);
+    if (us > 0)
+        ets_delay_us(us);
 }
 
 //esp32重启函数
 void luat_os_reboot(int code)
 {
-  esp_restart();
+    fflush(stdout);
+    esp_restart();
 }
 
 const char *luat_os_bsp(void)
 {
 #if CONFIG_IDF_TARGET_ESP32C3
-  return "ESP32C3";
+    return "ESP32C3";
 #elif CONFIG_IDF_TARGET_ESP32S3
-  return "ESP32S3";
+    return "ESP32S3";
 #else
-  return "ESP32";
+    return "ESP32-UNKNOW";
 #endif
 }
 
@@ -227,17 +241,17 @@ void luat_os_standy(int timeout)
 
 void luat_os_entry_cri(void)
 {
-  //vPortEnterCritical();
+    //vPortEnterCritical();
 }
 
 void luat_os_exit_cri(void)
 {
-  //vPortExitCritical();
+    //vPortExitCritical();
 }
 
 void luat_meminfo_sys(size_t *total, size_t *used, size_t *max_used)
 {
-  *used = esp_get_free_heap_size();
-  *max_used = esp_get_free_heap_size();
-  *total = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    *used = esp_get_free_heap_size();
+    *max_used = esp_get_free_heap_size();
+    *total = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
 }
