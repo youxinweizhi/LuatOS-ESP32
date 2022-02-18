@@ -1,5 +1,6 @@
 #include "luat_base.h"
 #include "luat_uart.h"
+#include "luat_shell.h"
 #include "luat_log.h"
 #define LUAT_LOG_TAG "luat.uart"
 
@@ -7,36 +8,40 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 static const char *TAG = "LUART";
-static xQueueHandle uart0_evt_queue = NULL;
+// static xQueueHandle uart0_evt_queue = NULL;
 static xQueueHandle uart1_evt_queue = NULL;
 static xQueueHandle uart2_evt_queue = NULL;
 
-static void uart0_irq_task(void *arg)
-{
-    uart_event_t event = {0};
-    rtos_msg_t msg = {0};
-    while (true)
-    {
-        if (xQueueReceive(uart0_evt_queue, (void *)&event, (portTickType)portMAX_DELAY))
-        {
-            switch (event.type)
-            {
-            case UART_DATA:
-                msg.handler = l_uart_handler;
-                msg.ptr = NULL;
-                msg.arg1 = 0; //uart1
-                msg.arg2 = 1; //recv
-                luat_msgbus_put(&msg, 0);
-                xQueueReset(uart0_evt_queue);
-                break;
-            default:
-                // ESP_LOGE("uart", "uart1 event type: %d", event.type);
-                break;
-            }
-        }
-    }
-    vTaskDelete(NULL);
-}
+// static void uart0_irq_task(void *arg)
+// {
+//     uart_event_t event = {0};
+//     rtos_msg_t msg = {0};
+//     char buffer[1024] = {0};
+//     int len = 0;
+//     while (true)
+//     {
+//         if (xQueueReceive(uart0_evt_queue, (void *)&event, (portTickType)portMAX_DELAY))
+//         {
+//             switch (event.type)
+//             {
+//             case UART_DATA:
+//                 msg.handler = l_uart_handler;
+//                 msg.ptr = NULL;
+//                 msg.arg1 = 0; //uart1
+//                 msg.arg2 = 1; //recv
+//                 luat_msgbus_put(&msg, 0);
+//                 len = uart_read_bytes(0, buffer, 1024, 10 / portTICK_RATE_MS);
+//                 luat_shell_push(buffer, len);
+//                 xQueueReset(uart0_evt_queue);
+//                 break;
+//             default:
+//                 // ESP_LOGE("uart", "uart1 event type: %d", event.type);
+//                 break;
+//             }
+//         }
+//     }
+//     vTaskDelete(NULL);
+// }
 
 static void uart1_irq_task(void *arg)
 {
@@ -46,9 +51,8 @@ static void uart1_irq_task(void *arg)
     {
         if (xQueueReceive(uart1_evt_queue, (void *)&event, (portTickType)portMAX_DELAY))
         {
-            switch (event.type)
+            if (event.timeout_flag || event.size > (1024 * 2 - 200))
             {
-            case UART_DATA:
                 // printf("uart1 data\n");
                 msg.handler = l_uart_handler;
                 msg.ptr = NULL;
@@ -56,10 +60,6 @@ static void uart1_irq_task(void *arg)
                 msg.arg2 = 1; //recv
                 luat_msgbus_put(&msg, 0);
                 xQueueReset(uart1_evt_queue);
-                break;
-            default:
-                // ESP_LOGE("uart", "uart1 event type: %d", event.type);
-                break;
             }
         }
     }
@@ -74,19 +74,14 @@ static void uart2_irq_task(void *arg)
     {
         if (xQueueReceive(uart2_evt_queue, (void *)&event, (portTickType)portMAX_DELAY))
         {
-            switch (event.type)
+            if (event.timeout_flag || event.size > (1024 * 2 - 200))
             {
-            case UART_DATA:
                 msg.handler = l_uart_handler;
                 msg.ptr = NULL;
                 msg.arg1 = 2; //uart2
                 msg.arg2 = 1; //recv
                 luat_msgbus_put(&msg, 0);
                 xQueueReset(uart2_evt_queue);
-                break;
-            default:
-                // ESP_LOGE("uart", "uart2 event type: %d", event.type);
-                break;
             }
         }
     }
@@ -133,7 +128,7 @@ int luat_uart_setup(luat_uart_t *uart)
     switch (uart->id)
     {
     case 0:
-        uart_driver_install(0, uart->bufsz, 1024 * 2, 20, &uart0_evt_queue, 0);
+        // uart_driver_install(0, uart->bufsz, 1024 * 2, 20, &uart0_evt_queue, 0);
         break;
     case 1:
         uart_driver_install(1, uart->bufsz, 1024 * 2, 20, &uart1_evt_queue, 0);
@@ -149,7 +144,7 @@ int luat_uart_setup(luat_uart_t *uart)
     switch (uart->id)
     {
     case 0:
-        xTaskCreate(uart0_irq_task, "uart0_irq_task", 4096, NULL, 10, NULL);
+        // xTaskCreate(uart0_irq_task, "uart0_irq_task", 4096, NULL, 10, NULL);
         break;
     case 1:
         xTaskCreate(uart1_irq_task, "uart1_irq_task", 4096, NULL, 10, NULL);
@@ -190,6 +185,11 @@ int luat_uart_write(int uartid, void *data, size_t length)
     }
     else
         return -1;
+}
+
+void luat_shell_write(char *buff, size_t len)
+{
+    uart_write_bytes(0, (const char *)buff, len);
 }
 
 int luat_uart_read(int uartid, void *buffer, size_t length)

@@ -3,8 +3,6 @@ VERSION = "1.0.0"
 
 -- 引入必要的库文件(lua编写), 内部库不需要require
 local sys = require "sys"
-local testData = string.rep("socketTest", 100)
-local tag = "socketTest"
 
 sys.taskInit(
     function()
