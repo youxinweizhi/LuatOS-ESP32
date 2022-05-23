@@ -1,4 +1,9 @@
 # coding=UTF-8
+#
+# SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import argparse
 import json
 import logging
@@ -21,35 +26,38 @@ logging.basicConfig(format='- [%(levelname)s]: %(message)s', level=logging.INFO)
 
 
 def flashFs(fspath, port, baud, chip, offset, size):
-    if chip == "esp32c3" or chip == "esp32s3":
+    if chip == "esp32c3" or chip == "esp32c3-usb" or chip == "esp32s3":
         if getattr(sys, 'frozen', False):
             bundle_dir = sys._MEIPASS
         else:
             bundle_dir = os.path.dirname(os.path.abspath(__file__))
         # luac
-        if not os.path.exists('tmp'):
-            os.mkdir('tmp')
-        else:
+        if os.path.exists('tmp'):
             shutil.rmtree('tmp')
+        
+        cmd = ""
+        if usePlat == "Windows":
+            cmd = bundle_dir + "\\bin\\luac_536_32bits.exe -o" + " tmp/"
+        elif usePlat == "Linux":
+            cmd = bundle_dir + "/bin/luac_536_32bits -o" + " tmp/"
+        else:
+            pass
+        # windows和linux执行luac,mac暂跳过不执行
+        if cmd != "":
             os.mkdir('tmp')
-        for root, dirs, name in os.walk(fspath):
-            for i in range(len(name)):
-                if name[i].endswith(".lua"):
-                    if usePlat == "Windows":
-                        cmd = bundle_dir + "\\bin\\luac_536_32bits.exe -o" + " tmp/" + \
-                              os.path.basename(name[i]) + "c " + fspath + os.path.basename(name[i])
-                    elif usePlat == "Linux":
-                        cmd = bundle_dir + "/bin/luac_536_32bits -o" + " tmp/" + \
-                              os.path.basename(name[i]) + "c " + fspath + os.path.basename(name[i])
+            for root, dirs, name in os.walk(fspath):
+                for i in range(len(name)):
+                    if name[i].endswith(".lua"):
+                        cmdd =  cmd + os.path.basename(name[i]) + "c " + fspath + os.path.basename(name[i])
+                        a = os.system(cmdd)
+                        if a != 0:
+                            logging.error("luac failed")
+                            sys.exit(-1)
+                    # 其他文件直接拷贝
                     else:
-                        logging.error("The platform {} is not support".format(usePlat))
-                    a = os.system(cmd)
-                    if a != 0:
-                        logging.error("luac failed")
-                        sys.exit(-1)
-                # 其他文件直接拷贝
-                else:
-                    shutil.copy(fspath + name[i], "tmp/" + os.path.basename(name[i]))
+                        shutil.copy(fspath + name[i], "tmp/" + os.path.basename(name[i]))
+        else:
+            shutil.copytree(fspath, "tmp/")
 
         # 制作fs分区
         if config[chip]["Luadb"]:
@@ -78,12 +86,15 @@ def flashFs(fspath, port, baud, chip, offset, size):
         logging.error("not support chip")
         sys.exit(-1)
 
+    board = chip
+    if board == "esp32c3-usb":
+        board = "esp32c3"
     command = ['--port', port,
-               '--baud', baud,
-               '--chip', chip,
-               'write_flash',
-               offset,
-               "script.bin"]
+                '--baud', baud,
+                '--chip', board,
+                'write_flash',
+                offset,
+                "script.bin"]
     if config[chip]["Luadb"]:
         command[-2] = config[chip]["LuadbOffset"]
         command[-1] = "disk.fs"
@@ -93,11 +104,11 @@ def flashFs(fspath, port, baud, chip, offset, size):
 
 
 def pkgRom(chip):
-    if chip == "esp32c3" or chip == "esp32s3":
+    if chip == "esp32c3" or chip == "esp32c3-usb" or chip == "esp32s3":
         # 查找固件位置
         with open(config['pkg']['Repo'] + '/build/' + "flasher_args.json", 'r', encoding='utf-8') as flash_args:
             j = json.load(flash_args)
-            if j['extra_esptool_args']['chip'] != chip:
+            if j['extra_esptool_args']['chip'] != chip and j['extra_esptool_args']['chip']+"-usb" != chip:
                 logging.error("The selected chip is inconsistent with the build")
                 sys.exit(-1)
             ss = sorted(
@@ -133,12 +144,12 @@ def pkgRom(chip):
         if not config['pkg']['Release']:
             logging.warning("user build")
             git_sha1 = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD']).strip()
-            firmware_name = "LuatOS-SoC_" + str(chip).upper() + '_' + \
+            firmware_name = "LuatOS-SoC_" + str(chip).upper().replace("-", "_")  + '_' + \
                             git_sha1.decode() + "_" + \
                             time.strftime("%Y%m%d%H%M%S", time.localtime())
         else:
             logging.warning("Release build")
-            firmware_name = "LuatOS-SoC_" + versionBsp+ '_'  +str(chip).upper() 
+            firmware_name = "LuatOS-SoC_" + versionBsp+ '_'  + str(chip).upper().replace("-", "_") 
 
         # 进入合并流程
         base_offset = 0x0
@@ -164,10 +175,13 @@ def pkgRom(chip):
             if chip == "esp32c3":
                 shutil.copy(config["pkg"]["Repo"] + "soc_tools/info_c3.json", 'tmp/')
                 os.rename("tmp/info_c3.json","tmp/info.json")
+            elif chip == "esp32c3-usb":
+                shutil.copy(config["pkg"]["Repo"] + "soc_tools/info_c3_usb.json", 'tmp/')
+                os.rename("tmp/info_c3_usb.json","tmp/info.json")
             elif chip == "esp32s3":
                 shutil.copy(config["pkg"]["Repo"] + "soc_tools/info_s3.json", 'tmp/')
                 os.rename("tmp/info_s3.json","tmp/info.json")
-            
+            shutil.copy(config["pkg"]["Repo"] + "components/luat/include/luat_conf_bsp.h", 'tmp/')
             # 改下bsp版本号
             # with open('./tmp/info.json', 'r', encoding='utf-8') as f:
             #     fir_info = json.load(f)
@@ -201,12 +215,15 @@ def pkgRom(chip):
 
 
 def flashRom(rom, port, baud, chip):
-    if chip == "esp32c3" or chip == "esp32s3":
+    if chip == "esp32c3" or "esp32c3-usb" or chip == "esp32s3":
         if not os.path.isfile(rom):
             logging.error("Firmware not configured")
             sys.exit(-1)
-        command_erase = ['--chip', chip, '--port', port, '--baud', baud, 'erase_flash']
-        command = ['--chip', chip, '--port', port, '--baud', baud, 'write_flash', '0x0', rom]
+        board = chip
+        if board == "esp32c3-usb":
+            board = "esp32c3"
+        command_erase = ['--chip', board, '--port', port, '--baud', baud, 'erase_flash']
+        command = ['--chip', board, '--port', port, '--baud', baud, 'write_flash', '0x0', rom]
         if config["pkg"]["SocSupport"]:
             if not os.path.exists('tmp'):
                 os.mkdir('tmp')
@@ -243,7 +260,7 @@ def flashRom(rom, port, baud, chip):
 
 
 def get_version():
-    return '3.1.2'
+    return '3.2.0'
 
 
 if __name__ == '__main__':
@@ -254,7 +271,7 @@ if __name__ == '__main__':
     config = toml.load("config.toml")
     parser = argparse.ArgumentParser(description="ESP32 Flash Tool")
     parser.add_argument('-v', '--version', action='version', version=get_version(), help='Show version')
-    parser.add_argument('-t', '--target', help='Chip型号:es32c3,esp32s3')
+    parser.add_argument('-t', '--target', help='Chip型号:esp32c3,esp32c3-usb,esp32s3')
     parser.add_argument('-f', '--fs', action="store_true", help='下载脚本')
     parser.add_argument('-r', '--rom', action="store_true", help='下载底层固件')
     parser.add_argument('-p', '--pkg', action="store_true", help='打包固件')

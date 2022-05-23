@@ -1,4 +1,10 @@
 /*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
 @module  wlan
 @summary esp32_wifi操作库
 @version 1.0
@@ -7,6 +13,7 @@
 #include <string.h>
 #include "luat_base.h"
 #include "esp_log.h"
+#include "luat_timer.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -18,15 +25,36 @@
 
 static const char *TAG = "LWLAN";
 
+#define LUAT_LOG_TAG "wlan"
+#include "luat_log.h"
+
+#define GET_SCAN_LIST_SIZE 20
+
 static EventGroupHandle_t s_wifi_event_group;
-esp_event_handler_instance_t instance_wifi;
-esp_event_handler_instance_t instance_got_ip;
-esp_event_handler_instance_t instance_scan;
+static esp_event_handler_instance_t instance_wifi;
+static esp_event_handler_instance_t instance_got_ip;
+static esp_event_handler_instance_t instance_scan;
 
-static char wlan_auto_connect = 0;
-static char wlan_mode = 0;
+static esp_netif_t *wifi_sta_netif = NULL;
+static esp_netif_t *wifi_ap_netif = NULL;
+// static esp_netif_t *wifi_apsta_netif = NULL;
 
-esp_netif_t *wifi_netif = NULL;
+static bool smart_config_active = false;
+
+static uint64_t smart_config_wait_id = 0;
+
+typedef union
+{
+    ip_event_got_ip_t got_ip_event;
+    smartconfig_event_got_ssid_pswd_t got_ssid_pswd_event;
+} WLAN_MSG_CONTEXT;
+
+struct
+{
+    uint8_t auto_connect : 1;
+    uint8_t mode : 2;
+    uint8_t reserved : 1;
+} wlan_ini;
 
 //回调事件处理
 static int l_wlan_handler(lua_State *L, void *ptr)
@@ -34,30 +62,162 @@ static int l_wlan_handler(lua_State *L, void *ptr)
     rtos_msg_t *msg = (rtos_msg_t *)lua_topointer(L, -1);
     int event = msg->arg1;
     int type = msg->arg2;
+    wifi_event_ap_staconnected_t *evt = (wifi_event_ap_staconnected_t *)ptr;
 
     if (type == 0)
     {
         switch (event)
         {
-        case WIFI_EVENT_STA_START: // 网络就绪，可以链接wifi
+        case WIFI_EVENT_SCAN_DONE:
             lua_getglobal(L, "sys_pub");
-            lua_pushstring(L, "WLAN_READY");
+/*
+@sys_pub wlan
+扫描完成
+WLAN_SCAN_DONE
+@usage
+sys.taskInit(function()
+    sys.waitUntil("WLAN_SCAN_DONE")
+end)
+*/
+            lua_pushstring(L, "WLAN_SCAN_DONE");
             lua_call(L, 1, 0);
-            esp_wifi_connect();
             break;
-        case WIFI_EVENT_STA_CONNECTED: // 已连上wifi
+        case WIFI_EVENT_STA_START:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan_sta开始
+WLAN_STA_START
+@usage
+sys.subscribe("WLAN_STA_START", function ()
+    log.info("wlan", "WLAN_STA_START")
+end)
+*/
+            lua_pushstring(L, "WLAN_STA_START");
+            lua_call(L, 1, 0);
+            break;
+        case WIFI_EVENT_STA_CONNECTED:
+            if (smart_config_wait_id != 0)
+            {
+                smart_config_wait_id = 0;
+                lua_pushboolean(L, 1);
+                luat_cbcwait(L, smart_config_wait_id, 1);
+            }
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan已连上wifi
+WLAN_STA_CONNECTED
+@usage
+sys.subscribe("WLAN_STA_CONNECTED", function ()
+    log.info("wlan", "WLAN_STA_CONNECTED")
+end)
+*/
             lua_pushstring(L, "WLAN_STA_CONNECTED");
             lua_call(L, 1, 0);
             break;
-        case WIFI_EVENT_STA_DISCONNECTED: //已断开wifi
+        case WIFI_EVENT_STA_DISCONNECTED:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan已断开wifi
+WLAN_STA_DISCONNECTED
+@usage
+sys.subscribe("WLAN_STA_DISCONNECTED", function ()
+    log.info("wlan", "WLAN_STA_DISCONNECTED")
+end)
+*/
             lua_pushstring(L, "WLAN_STA_DISCONNECTED");
-            if (wlan_auto_connect == 1)
+            if (wlan_ini.auto_connect == 1 || smart_config_active)
             {
+                ESP_LOGI(TAG, "RECONNECT WIFI ");
                 esp_wifi_connect();
             }
+            if (smart_config_active)
+            {
+                xEventGroupClearBits(s_wifi_event_group, BIT0);
+            }
             lua_call(L, 1, 0);
+            break;
+        case WIFI_EVENT_STA_STOP:
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan已停止
+WIFI_EVENT_STA_STOP
+@usage
+sys.subscribe("WIFI_EVENT_STA_STOP", function ()
+    log.info("wlan", "WIFI_EVENT_STA_STOP")
+end)
+*/
+            lua_pushstring(L, "WLAN_STA_STOP");
+            lua_call(L, 1, 0);
+            break;
+        case WIFI_EVENT_AP_START:
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan ap启动
+WLAN_AP_START
+@usage
+sys.subscribe("WLAN_AP_START", function ()
+    log.info("wlan", "WLAN_AP_START")
+end)
+*/
+            lua_pushstring(L, "WLAN_AP_START");
+            lua_call(L, 1, 0);
+            break;
+        case WIFI_EVENT_AP_STOP:
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan ap停止
+WLAN_AP_STOP
+@usage
+sys.subscribe("WLAN_AP_STOP", function ()
+    log.info("wlan", "WLAN_AP_STOP")
+end)
+*/
+            lua_pushstring(L, "WLAN_AP_STOP");
+            lua_call(L, 1, 0);
+            break;
+        case WIFI_EVENT_AP_STACONNECTED:
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan ap有客户端连接
+WLAN_AP_STACONNECTED
+@string mac地址
+@int aid
+@usage
+sys.subscribe("WLAN_AP_STACONNECTED", function (mac,aid)
+    log.info("wlan", "WLAN_AP_STACONNECTED",aid,mac:toHex())
+end)
+*/
+            lua_pushstring(L, "WLAN_AP_STACONNECTED");
+            lua_pushlstring(L, (const char *)evt->mac, 6);
+            lua_pushinteger(L, evt->aid);
+            lua_call(L, 3, 0);
+            free(evt);
+            break;
+        case WIFI_EVENT_AP_STADISCONNECTED:
+            lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+wlan ap有客户端断开
+WLAN_AP_STADISCONNECTED
+@string mac地址
+@int aid
+@usage
+sys.subscribe("WLAN_AP_STADISCONNECTED", function (mac,aid)
+    log.info("wlan", "WLAN_AP_STADISCONNECTED",aid,mac:toHex())
+end)
+*/
+            lua_pushstring(L, "WLAN_AP_STADISCONNECTED");
+            lua_pushlstring(L, (const char *)evt->mac, 6);
+            lua_pushinteger(L, evt->aid);
+            lua_call(L, 3, 0);
+            free(evt);
             break;
         default:
             break;
@@ -68,13 +228,24 @@ static int l_wlan_handler(lua_State *L, void *ptr)
         ip_event_got_ip_t *event_data = (ip_event_got_ip_t *)ptr;
         switch (event)
         {
-        case IP_EVENT_STA_GOT_IP: //已获得ip
+        case IP_EVENT_STA_GOT_IP:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+获取到ip
+IP_READY
+@string ip地址
+@usage
+sys.subscribe("IP_READY", function (ip)
+    log.info("wlan", "IP_READY",ip)
+end)
+*/
             lua_pushstring(L, "IP_READY");
             lua_pushfstring(L, "%d.%d.%d.%d", esp_ip4_addr1_16(&event_data->ip_info.ip),
                             esp_ip4_addr2_16(&event_data->ip_info.ip),
                             esp_ip4_addr3_16(&event_data->ip_info.ip),
                             esp_ip4_addr4_16(&event_data->ip_info.ip));
+            free(ptr); //这里的ptr是深拷贝，需要释放
             lua_call(L, 2, 0);
             break;
         default:
@@ -85,22 +256,47 @@ static int l_wlan_handler(lua_State *L, void *ptr)
     {
         smartconfig_event_got_ssid_pswd_t *evt = (smartconfig_event_got_ssid_pswd_t *)ptr;
         wifi_config_t wifi_config = {0};
-        // uint8_t ssid[33] = {0};
-        // uint8_t password[65] = {0};
         switch (event)
         {
         case SC_EVENT_SCAN_DONE:
             lua_getglobal(L, "sys_pub");
+            /*
+            @sys_pub wlan
+            smartconfig扫描完成
+            WIFI_SCAN_DONE
+            @usage
+            sys.subscribe("WIFI_SCAN_DONE", function ()
+                log.info("wlan", "WIFI_SCAN_DONE")
+            end)
+            */
             lua_pushstring(L, "WIFI_SCAN_DONE");
             lua_call(L, 1, 0);
             break;
         case SC_EVENT_FOUND_CHANNEL:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+smartconfig获取到目标ap的channle
+WIFI_SCAN_FOUND_CHANNEL
+@usage
+sys.subscribe("WIFI_SCAN_FOUND_CHANNEL", function ()
+    log.info("wlan", "WIFI_SCAN_FOUND_CHANNEL")
+end)
+*/
             lua_pushstring(L, "WIFI_SCAN_FOUND_CHANNEL");
             lua_call(L, 1, 0);
             break;
         case SC_EVENT_GOT_SSID_PSWD:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+smartconfig获取到wifi信息
+WIFI_SCAN_GOT_SSID_PSWD
+@usage
+sys.subscribe("WIFI_SCAN_GOT_SSID_PSWD", function ()
+    log.info("wlan", "WIFI_SCAN_GOT_SSID_PSWD")
+end)
+*/
             lua_pushstring(L, "WIFI_SCAN_GOT_SSID_PSWD");
             lua_call(L, 1, 0);
             memcpy(wifi_config.sta.ssid, evt->ssid, sizeof(wifi_config.sta.ssid));
@@ -110,14 +306,25 @@ static int l_wlan_handler(lua_State *L, void *ptr)
             {
                 memcpy(wifi_config.sta.bssid, evt->bssid, sizeof(wifi_config.sta.bssid));
             }
-            // memcpy(ssid, evt->ssid, sizeof(evt->ssid));
-            // memcpy(password, evt->password, sizeof(evt->password));
-            ESP_ERROR_CHECK(esp_wifi_disconnect());
-            ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+            ESP_LOGI(TAG, "SC_EVENT_GOT_SSID_PSWD");
+            ESP_LOGI(TAG, "got SSID:%s", wifi_config.sta.ssid);
+            ESP_LOGI(TAG, "got PASSWORD:%s", wifi_config.sta.password);
+            esp_wifi_disconnect();                          // todo error check
+            esp_wifi_set_config(WIFI_IF_STA, &wifi_config); // todo error check
             esp_wifi_connect();
+            free(ptr); //这里的ptr是深拷贝，需要释放
             break;
         case SC_EVENT_SEND_ACK_DONE:
             lua_getglobal(L, "sys_pub");
+/*
+@sys_pub wlan
+smartconfig ack发送完成
+SMARTCONFIG_ACK_DONE
+@usage
+sys.subscribe("SMARTCONFIG_ACK_DONE", function ()
+    log.info("wlan", "SMARTCONFIG_ACK_DONE")
+end)
+*/
             lua_pushstring(L, "SMARTCONFIG_ACK_DONE");
             lua_call(L, 1, 0);
             break;
@@ -137,7 +344,13 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     rtos_msg_t msg = {0};
     msg.handler = l_wlan_handler;
     msg.ptr = NULL;
+    ESP_LOGI(TAG, "event_handler %s %d", event_base, event_id);
 
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_SCAN_DONE)
+    {
+        msg.arg1 = WIFI_EVENT_SCAN_DONE;
+        msg.arg2 = 0;
+    }
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
         msg.arg1 = WIFI_EVENT_STA_START;
@@ -153,11 +366,45 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         msg.arg1 = WIFI_EVENT_STA_CONNECTED;
         msg.arg2 = 0;
     }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_STOP)
+    {
+        msg.arg1 = WIFI_EVENT_STA_STOP;
+        msg.arg2 = 0;
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_START)
+    {
+        msg.arg1 = WIFI_EVENT_AP_START;
+        msg.arg2 = 0;
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STOP)
+    {
+        msg.arg1 = WIFI_EVENT_AP_STOP;
+        msg.arg2 = 0;
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED)
+    {
+        wifi_event_ap_staconnected_t *evt = malloc(sizeof(wifi_event_ap_staconnected_t));
+        memcpy(evt, event_data, sizeof(wifi_event_ap_staconnected_t));
+        msg.arg1 = WIFI_EVENT_AP_STACONNECTED;
+        msg.arg2 = 0;
+        msg.ptr = evt;
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED)
+    {
+        wifi_event_ap_staconnected_t *evt = malloc(sizeof(wifi_event_ap_staconnected_t));
+        memcpy(evt, event_data, sizeof(wifi_event_ap_staconnected_t));
+        msg.arg1 = WIFI_EVENT_AP_STADISCONNECTED;
+        msg.arg2 = 0;
+        msg.ptr = evt;
+    }
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
     {
+        WLAN_MSG_CONTEXT *msg_context = (WLAN_MSG_CONTEXT *)malloc(sizeof(WLAN_MSG_CONTEXT));
+        //这里需要深拷贝
+        memcpy(msg_context, event_data, sizeof(smartconfig_event_got_ssid_pswd_t));
         msg.arg1 = IP_EVENT_STA_GOT_IP;
         msg.arg2 = 1;
-        msg.ptr = event_data;
+        msg.ptr = msg_context;
     }
     else if (event_base == SC_EVENT && event_id == SC_EVENT_SCAN_DONE)
     {
@@ -171,9 +418,12 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     }
     else if (event_base == SC_EVENT && event_id == SC_EVENT_GOT_SSID_PSWD)
     {
+        WLAN_MSG_CONTEXT *msg_context = (WLAN_MSG_CONTEXT *)malloc(sizeof(WLAN_MSG_CONTEXT));
+        //这里需要深拷贝
+        memcpy(msg_context, event_data, sizeof(smartconfig_event_got_ssid_pswd_t));
         msg.arg1 = SC_EVENT_GOT_SSID_PSWD;
         msg.arg2 = 2;
-        msg.ptr = event_data;
+        msg.ptr = msg_context;
     }
     else if (event_base == SC_EVENT && event_id == SC_EVENT_SEND_ACK_DONE)
     {
@@ -214,20 +464,35 @@ wlan.setMode(wlan.STATION)
 static int l_wlan_set_mode(lua_State *L)
 {
     int mode = luaL_checkinteger(L, 1);
-    wlan_mode = (char)mode;
+    wlan_ini.mode = (char)mode;
     esp_err_t err = -1;
-    switch (mode)
+    if (mode < WIFI_MODE_MAX)
     {
-    case WIFI_MODE_NULL:
-    case WIFI_MODE_STA:
-    case WIFI_MODE_AP:
-    case WIFI_MODE_APSTA:
         err = esp_wifi_set_mode(mode);
+        switch (mode)
+        {
+        case WIFI_MODE_STA:
+            if (!wifi_sta_netif)
+            {
+                wifi_sta_netif = esp_netif_create_default_wifi_sta();
+            }
+            break;
+        case WIFI_MODE_AP:
+            if (!wifi_ap_netif)
+            {
+                wifi_ap_netif = esp_netif_create_default_wifi_ap();
+            }
+            break;
+        default:
+            break;
+        }
         lua_pushinteger(L, err);
-        return 1;
-    default:
-        return luaL_error(L, "invalid wifi mode %d", mode);
     }
+    else
+    {
+        lua_pushinteger(L, ESP_ERR_INVALID_ARG);
+    }
+    return 1;
 }
 
 /*
@@ -240,17 +505,104 @@ wlan.init()
 */
 static int l_wlan_init(lua_State *L)
 {
-    ESP_ERROR_CHECK(esp_netif_init());
+    esp_netif_init(); // todo error check
     s_wifi_event_group = xEventGroupCreate();
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_event_loop_create_default(); // todo error check
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_wifi);    // todo error check
+    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip); // todo error check
+    esp_event_handler_instance_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_scan);      // todo error check
     esp_err_t err = esp_wifi_init(&cfg);
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_wifi));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL, &instance_scan));
     lua_pushinteger(L, err);
     return 1;
 }
+
+/*
+开始扫网,通常配合wlan.scanResult使用
+@api wlan.scan()
+@return boolean 启动结果,一般为true
+@usage 
+-- 扫描并查询结果
+wlan.scan()
+sys.waitUntil("WLAN_SCAN_DONE", 30000)
+local re = wlan.scanResult()
+for i in ipairs(re) do
+    log.info("wlan", "info", re[i].ssid, re[i].rssi)
+end
+*/
+static int l_wlan_scan(lua_State *L)
+{
+    esp_wifi_start();
+    esp_wifi_scan_stop();
+    lua_pushboolean(L, esp_wifi_scan_start(NULL, true) == ESP_OK);
+    return 1;
+}
+
+
+/*
+获取扫网结果,需要先执行wlan.scan,并等待WLAN_SCAN_DONE事件
+@api wlan.scanResult(num)
+@int 最大结果数量,默认50
+@return table 扫描结果的数组
+@usage 
+-- 扫描并查询结果
+wlan.scan()
+sys.waitUntil("WLAN_SCAN_DONE", 30000)
+local re = wlan.scanResult()
+for i in ipairs(re) do
+    log.info("wlan", "info", re[i].ssid, re[i].rssi)
+end
+*/
+static int l_wlan_scan_get_result(lua_State *L) {
+    uint16_t ap_count = 0;
+    wifi_ap_record_t ap_info[GET_SCAN_LIST_SIZE] = {0};
+    uint16_t num = luaL_optinteger(L, 1, 20);                        /* 查询扫描结果数量 */
+    if (num>GET_SCAN_LIST_SIZE)num = GET_SCAN_LIST_SIZE;
+    esp_wifi_scan_get_ap_records(&num, ap_info);
+    if (esp_wifi_scan_get_ap_num(&ap_count)==ESP_OK) {
+        LLOGI("wlan_scan_get_result >> %ld", ap_count);
+    }
+    lua_createtable(L, num, 0);
+    if (ap_count > 0) {
+        if (ap_count < num) {
+            num = ap_count;
+        }
+        for (size_t i = 0; i < num; i++)
+        {
+            wifi_ap_record_t info = ap_info[i];
+            lua_pushinteger(L, i+1);
+
+            // local info = {}
+            lua_createtable(L, 0, 5);
+
+            // info.ssid = xxx
+            lua_pushliteral(L, "ssid");
+            lua_pushlstring(L, (const char *)info.ssid, 33);
+            lua_settable(L, -3);
+
+            // info.rssi = xxx
+            lua_pushliteral(L, "rssi");
+            lua_pushinteger(L, info.rssi);
+            lua_settable(L, -3);
+
+            // info.channel = xxx
+            lua_pushliteral(L, "channel");
+            lua_pushinteger(L, info.primary);
+            lua_settable(L, -3);
+
+            // info.bssid = xxx
+            lua_pushliteral(L, "bssid");
+            lua_pushlstring(L, (const char *)info.bssid, 6);
+            lua_settable(L, -3);
+
+            // re[i+1] = info
+            lua_settable(L, -3);
+        }
+        return 1;
+    }
+    return 0;
+}
+
 
 /*
 连接wifi,成功启动联网线程不等于联网成功!!
@@ -265,7 +617,6 @@ wlan.connect("uiot", "1234567890")
 */
 static int l_wlan_connect(lua_State *L)
 {
-    wifi_netif = esp_netif_create_default_wifi_sta();
     wifi_config_t cfg;
     memset(&cfg, 0, sizeof(cfg));
     size_t len = 0;
@@ -280,10 +631,36 @@ static int l_wlan_connect(lua_State *L)
         len = sizeof(cfg.sta.password);
     strncpy((char *)cfg.sta.password, Lpasswd, len);
 
-    wlan_auto_connect = luaL_optinteger(L, 3, 0);
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
-    esp_err_t err = (esp_wifi_start());
+    wlan_ini.auto_connect = luaL_optinteger(L, 3, 0);
+    esp_wifi_set_config(WIFI_IF_STA, &cfg); // todo error check
+    esp_wifi_start();
+    esp_err_t err = esp_wifi_connect();
     lua_pushinteger(L, err);
+    return 1;
+}
+
+/*
+wifi是否已经获取ip
+@api wlan.ready()
+@return boolean 已经有ip返回true,否则返回false
+@usage 
+-- 查询是否已经wifi联网
+if wlan.ready() then
+    log.info("wlan", "wifi ok", "Let's Rock!")
+end
+*/
+static int l_wlan_ready(lua_State *L) {
+    if(wifi_sta_netif != NULL)
+    {
+        esp_netif_ip_info_t ipInfo = {0};
+        esp_netif_get_ip_info(wifi_sta_netif, &ipInfo);
+        lua_pushboolean(L, ipInfo.ip.addr == 0?0:1);
+    }
+    else
+    {
+        LLOGE("WIFI STA NETIF NOT INIT");
+        lua_pushboolean(L, 0);
+    }
     return 1;
 }
 
@@ -301,7 +678,6 @@ wlan.createAP("LuatOS-ESP32","12345678")
 */
 static int l_wlan_create_ap(lua_State *L)
 {
-    wifi_netif = esp_netif_create_default_wifi_ap();
     wifi_config_t cfg = {0};
     size_t len = 0;
 
@@ -320,8 +696,8 @@ static int l_wlan_create_ap(lua_State *L)
     cfg.ap.max_connection = luaL_optinteger(L, 4, 5);
     cfg.ap.authmode = luaL_optinteger(L, 5, WIFI_AUTH_WPA_WPA2_PSK);
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &cfg));
-    esp_err_t err = (esp_wifi_start());
+    esp_wifi_set_config(WIFI_IF_AP, &cfg); // todo error check
+    esp_err_t err = esp_wifi_start();
     lua_pushinteger(L, err);
     return 1;
 }
@@ -336,8 +712,24 @@ wlan.disconnect()
 */
 static int l_wlan_disconnect(lua_State *L)
 {
-    wlan_auto_connect = 0; // 人为断开wifi就关掉自动重连
+    wlan_ini.auto_connect = 0; // 人为断开wifi就关掉自动重连
     esp_err_t err = esp_wifi_disconnect();
+    lua_pushinteger(L, err);
+    return 1;
+}
+
+/*
+关闭wifi
+@api wlan.stop()
+@return int esp_err
+@usage
+-- 关闭wifi
+wlan.stop()
+*/
+static int l_wlan_stop(lua_State *L)
+{
+    esp_err_t err = -1;
+    err = esp_wifi_stop();
     lua_pushinteger(L, err);
     return 1;
 }
@@ -353,8 +745,16 @@ wlan.deinit()
 static int l_wlan_deinit(lua_State *L)
 {
     esp_err_t err = -1;
-    ESP_ERROR_CHECK(esp_wifi_stop());
-    ESP_ERROR_CHECK(esp_event_loop_delete_default());
+    esp_wifi_stop();                 // todo error check
+    esp_event_loop_delete_default(); // todo error check
+    if (wlan_ini.mode == WIFI_MODE_STA)
+    {
+        esp_netif_destroy_default_wifi(wifi_sta_netif);
+    }
+    else if (wlan_ini.mode == WIFI_MODE_AP)
+    {
+        esp_netif_destroy_default_wifi(wifi_ap_netif);
+    }
     err = esp_wifi_deinit();
     lua_pushinteger(L, err);
     return 1;
@@ -366,12 +766,11 @@ static int l_wlan_deinit(lua_State *L)
 @int 省电等级 省电等级 wlan.PS_NONE  wlan.PS_MIN_MODEM wlan.PS_MAX_MODEM
 @return int esp_err
 @usage
-wlan.setps(1)
+wlan.setps(wlan.PS_MAX_MODEM)
 */
 static int l_wlan_set_ps(lua_State *L)
 {
-    int ps = luaL_checkinteger(L, 1);
-    esp_err_t err = esp_wifi_set_ps(ps);
+    esp_err_t err = esp_wifi_set_ps(luaL_checkinteger(L, 1));
     lua_pushinteger(L, err);
     return 1;
 }
@@ -385,10 +784,71 @@ wlan.getps()
 */
 static int l_wlan_get_ps(lua_State *L)
 {
-    esp_err_t err = -1;
     wifi_ps_type_t type;
-    err = esp_wifi_get_ps(&type);
+    esp_wifi_get_ps(&type);
+    lua_pushinteger(L, (int)type);
+    return 1;
+}
+
+/*
+设置wifi协议
+@api wlan.setProtocol(mode,protocaolmap)
+@int mode wlan.IF_STA wlan.IF_AP
+@int protocaolmap wlan.P11B wlan.P11G wlan.P11N wlan.LR
+@return int esp_err
+*/
+static int l_wlan_set_protocol(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    int map = luaL_checkinteger(L, 2);
+    esp_err_t err = esp_wifi_set_protocol(mode, map);
     lua_pushinteger(L, err);
+    return 1;
+}
+
+/*
+获取wifi协议
+@api wlan.getProtocol(mode)
+@int mode wlan.IF_STA wlan.IF_AP
+@return int protocaolmap
+*/
+static int l_wlan_get_protocol(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    uint8_t map = 0;
+    esp_wifi_get_protocol(mode, &map);
+    lua_pushinteger(L, map);
+    return 1;
+}
+
+/*
+设置wifi带宽
+@api wlan.setBandwidth(mode,bw)
+@int mode wlan.IF_STA wlan.IF_AP
+@int bw wlan.HT20 wlan.HT40
+@return int esp_err
+*/
+static int l_wlan_set_bandwidth(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    int bw = luaL_checkinteger(L, 2);
+    esp_err_t err = esp_wifi_set_bandwidth(mode, (wifi_bandwidth_t)bw);
+    lua_pushinteger(L, err);
+    return 1;
+}
+
+/*
+获取wifi带宽
+@api wlan.getBandwidth(mode)
+@int mode wlan.IF_STA wlan.IF_AP
+@return int bw
+*/
+static int l_wlan_get_bandwidth(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    wifi_bandwidth_t bw;
+    esp_wifi_get_bandwidth(mode, &bw);
+    lua_pushinteger(L, (int)bw);
     return 1;
 }
 
@@ -396,12 +856,17 @@ static void smartconfig_task(void *parm)
 {
     smartconfig_type_t mode = (smartconfig_type_t)parm;
     EventBits_t uxBits;
-    ESP_ERROR_CHECK(esp_smartconfig_set_type(mode));
+    esp_smartconfig_set_type(mode); // todo error check
     smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_smartconfig_start(&cfg));
+    esp_smartconfig_start(&cfg); // todo error check
     while (1)
     {
         uxBits = xEventGroupWaitBits(s_wifi_event_group, BIT1, true, false, portMAX_DELAY);
+
+        if (uxBits & BIT0)
+        {
+            ESP_LOGI(TAG, "WiFi Connected to ap");
+        }
         if (uxBits & BIT1)
         {
             ESP_LOGI(TAG, "smartconfig over");
@@ -413,34 +878,91 @@ static void smartconfig_task(void *parm)
 
 /*
 smartconfig配网(默认esptouch)
-@api wlan.smartconfig()
+@api wlan.smartconfig(mode)
 @int mode 0:ESPTouch 1:AirKiss 2:ESPTouch and AirKiss 3:ESPTouch v2
 @return int 创建成功0 失败1
 @usage
-wlan.smartconfigStop()
+wlan.smartconfig()
 */
 static int l_wlan_smartconfig(lua_State *L)
 {
     int mode = luaL_optinteger(L, 1, SC_TYPE_ESPTOUCH);
+    smart_config_active = true;
     esp_wifi_start();
     BaseType_t re = xTaskCreate(smartconfig_task, "smartconfig_task", 4096, (void *)mode, 3, NULL);
     lua_pushinteger(L, re == pdPASS ? 0 : 1);
     return 1;
 }
 
-/*
-smartconfig配网停止
-@api wlan.smartconfigStop()
-@return int esp_err
-@usage
-wlan.smartconfig()
-*/
-static int l_wlan_smartconfig_stop(lua_State *L)
+static int smartconfig_timeout_handler(lua_State *L, void *ptr)
 {
-    esp_err_t err = esp_smartconfig_stop();
-    lua_pushinteger(L, err);
+    luat_timer_t *timer = (luat_timer_t *)ptr;
+    uint64_t *idp = (uint64_t *)timer->id;
+    if (smart_config_wait_id != 0)
+    {
+        lua_pushboolean(L, 0);
+        luat_cbcwait(L, *idp, 1);
+        smart_config_wait_id = 0;
+    }
+    free(idp);
+    return 0;
+}
+
+/*
+smartconfig配网(默认esptouch)（多任务内使用）
+@api wlan.taskSmartconfig()
+@int mode，可选，默认0 0:ESPTouch 1:AirKiss 2:ESPTouch and AirKiss 3:ESPTouch v2
+@int 超时时间（秒），可选，默认120秒
+@return bool 联网成功true 联网失败false
+@usage
+--任务内调用
+local result = wlan.taskSmartconfig().wait()
+*/
+static int l_wlan_task_smartconfig(lua_State *L)
+{
+    if (smart_config_wait_id != 0) //防止开启多次
+    {
+        lua_pushboolean(L, 0);
+        luat_pushcwait_error(L, 1);
+        return 1;
+    }
+    int mode = luaL_optinteger(L, 1, SC_TYPE_ESPTOUCH);
+    int timeout = luaL_optinteger(L, 2, 120);
+    smart_config_active = true;
+    esp_wifi_start();
+    BaseType_t re = xTaskCreate(smartconfig_task, "smartconfig_task", 4096, (void *)mode, 3, NULL);
+    if (re != pdPASS) //发起失败
+    {
+        lua_pushboolean(L, 0);
+        luat_pushcwait_error(L, 1);
+        return 1;
+    }
+    smart_config_wait_id = luat_pushcwait(L);
+    luat_timer_t *timer = (luat_timer_t *)malloc(sizeof(luat_timer_t));
+    uint64_t *idp = (uint64_t *)malloc(sizeof(uint64_t));
+    memcpy(idp, &smart_config_wait_id, sizeof(uint64_t));
+    timer->id = (size_t)idp;
+    timer->timeout = timeout * 1000;
+    timer->repeat = 0;
+    timer->func = &smartconfig_timeout_handler;
+    luat_timer_start(timer);
+
     return 1;
 }
+
+// /*
+// smartconfig配网停止
+// @api wlan.smartconfigStop()
+// @return int 创建成功0 失败1
+// @usage
+// wlan.smartconfigStop()
+// */
+// static int l_wlan_smartconfig_stop(lua_State *L)
+// {
+//     esp_err_t err = esp_smartconfig_stop();
+//     lua_pushinteger(L, err);
+//     return 1;
+// }
 
 /*
 wlan dhcp开关
@@ -455,29 +977,29 @@ static int l_wlan_dhcp(lua_State *L)
     esp_err_t err = -1;
     int mode = luaL_checkinteger(L, 1);
 
-    if (wlan_mode == WIFI_MODE_STA)
+    if (wlan_ini.mode == WIFI_MODE_STA)
     {
         switch (mode)
         {
         case 0:
-            err = esp_netif_dhcpc_stop(wifi_netif);
+            err = esp_netif_dhcpc_stop(wifi_sta_netif);
             break;
         case 1:
-            err = esp_netif_dhcpc_start(wifi_netif);
+            err = esp_netif_dhcpc_start(wifi_sta_netif);
             break;
         default:
             break;
         }
     }
-    else if (wlan_mode == WIFI_MODE_AP)
+    else if (wlan_ini.mode == WIFI_MODE_AP)
     {
         switch (mode)
         {
         case 0:
-            err = esp_netif_dhcps_stop(wifi_netif);
+            err = esp_netif_dhcps_stop(wifi_ap_netif);
             break;
         case 1:
-            err = esp_netif_dhcps_start(wifi_netif);
+            err = esp_netif_dhcps_start(wifi_ap_netif);
             break;
         default:
             break;
@@ -515,9 +1037,14 @@ static int l_wlan_set_ip(lua_State *L)
 
     sscanf(netmask, "%d.%d.%d.%d", &a, &b, &c, &d);
     IP4_ADDR(&ip_info.netmask, a, b, c, d);
-
-    err = esp_netif_set_ip_info(wifi_netif, &ip_info);
-
+    if (wlan_ini.mode == WIFI_MODE_STA)
+    {
+        err = esp_netif_set_ip_info(wifi_sta_netif, &ip_info);
+    }
+    else if (wlan_ini.mode == WIFI_MODE_AP)
+    {
+        err = esp_netif_set_ip_info(wifi_ap_netif, &ip_info);
+    }
     lua_pushinteger(L, err);
     return 1;
 }
@@ -534,7 +1061,96 @@ static int l_wlan_set_hostname(lua_State *L)
 {
     esp_err_t err = -1;
     const char *name = luaL_checkstring(L, 1);
-    esp_netif_set_hostname(wifi_netif, name);
+    if (wlan_ini.mode == WIFI_MODE_STA)
+    {
+        err = esp_netif_set_hostname(wifi_sta_netif, name);
+    }
+    else if (wlan_ini.mode == WIFI_MODE_AP)
+    {
+        err = esp_netif_set_hostname(wifi_ap_netif, name);
+    }
+    lua_pushinteger(L, err);
+    return 1;
+}
+
+/*
+wlan获取配置信息
+@api  wlan.getConfig(mode)
+@int mode STA:0 AP:1
+@return table STA:{"ssid":"xxx","password":"xxx","bssid":"xxx"} AP:{"ssid":"xxx","password":"xxx"}
+@usage
+-- AP
+t = wlan.getConfig(1)
+log.info("wlan", "wifi ap info", t.ssid, t.password)
+-- STA
+t = wlan.getConfig(0)
+log.info("wlan", "wifi connected info", t.ssid, t.password, t.bssid:toHex())
+*/
+static int l_wlan_get_config(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    wifi_config_t conf = {0};
+    esp_wifi_get_config((wifi_interface_t)mode, &conf);
+
+    lua_newtable(L);
+    if (mode == 0)
+    {
+        lua_pushstring(L, "ssid");
+        lua_pushstring(L, (const char *)conf.sta.ssid);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "password");
+        lua_pushstring(L, (const char *)conf.sta.password);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "bssid");
+        lua_pushstring(L, (const char *)conf.sta.bssid);
+        lua_settable(L, -3);
+    }
+    else if (mode == 1)
+    {
+        lua_pushstring(L, "ssid");
+        lua_pushstring(L, (const char *)conf.ap.ssid);
+        lua_settable(L, -3);
+
+        lua_pushstring(L, "password");
+        lua_pushstring(L, (const char *)conf.ap.password);
+        lua_settable(L, -3);
+    }
+    else
+    {
+        lua_pushnil(L);
+    }
+
+    return 1;
+}
+
+/*
+wlan设置自定义mac
+@api  wlan.setMac(mode,mac)
+@int mode STA:0 AP:1
+@string mac 6位mac地址
+@return esp_err_t
+@usage
+wlan.setMac(1, string.fromHex("60AAF973090E"))
+*/
+static int l_wlan_set_mac(lua_State *L)
+{
+    int mode = luaL_checkinteger(L, 1);
+    uint8_t mac[6] = {0};
+    size_t len = 0;
+    const char *m = luaL_checklstring(L, 2, &len);
+    if (len == 6)
+    {
+        memcpy(mac, m, 6);
+    }
+    else
+    {
+        LLOGE("mac len != 6,input len is %d",len);
+        lua_pushinteger(L, -1);
+        return 1;
+    }
+    esp_err_t err = esp_wifi_set_mac((wifi_interface_t)mode, (const uint8_t *)mac);
     lua_pushinteger(L, err);
     return 1;
 }
@@ -543,24 +1159,40 @@ static int l_wlan_set_hostname(lua_State *L)
 static const rotable_Reg reg_wlan[] =
     {
         {"init", l_wlan_init, 0},
+        {"scan", l_wlan_scan, 0},
+        {"scan_get_info", l_wlan_scan_get_result, 0},
+        {"scanResult", l_wlan_scan_get_result, 0},
+        {"ready", l_wlan_ready, 0},
         {"getMode", l_wlan_get_mode, 0},
         {"setMode", l_wlan_set_mode, 0},
         {"connect", l_wlan_connect, 0},
         {"createAP", l_wlan_create_ap, 0},
         {"disconnect", l_wlan_disconnect, 0},
+        {"stop", l_wlan_stop, 0},
         {"deinit", l_wlan_deinit, 0},
         {"setps", l_wlan_set_ps, 0},
         {"getps", l_wlan_get_ps, 0},
+        {"setProtocol", l_wlan_set_protocol, 0},
+        {"getProtocol", l_wlan_get_protocol, 0},
+        {"setBandwidth", l_wlan_set_bandwidth, 0},
+        {"getBandwidth", l_wlan_get_bandwidth, 0},
         {"dhcp", l_wlan_dhcp, 0},
         {"setIp", l_wlan_set_ip, 0},
+        {"getConfig", l_wlan_get_config, 0},
         {"setHostname", l_wlan_set_hostname, 0},
         {"smartconfig", l_wlan_smartconfig, 0},
-        {"smartconfigStop", l_wlan_smartconfig_stop, 0},
+        {"taskSmartconfig", l_wlan_task_smartconfig, 0},
+        {"setMac", l_wlan_set_mac, 0},
+        // {"smartconfigStop", l_wlan_smartconfig_stop, 0},
 
         {"NONE", NULL, WIFI_MODE_NULL},
         {"STATION", NULL, WIFI_MODE_STA},
         {"AP", NULL, WIFI_MODE_AP},
         {"STATIONAP", NULL, WIFI_MODE_APSTA},
+
+        {"IF_STA", NULL, WIFI_IF_STA},
+        {"IF_AP", NULL, WIFI_IF_AP},
+
         {"PS_NONE", NULL, WIFI_PS_NONE},
         {"PS_MIN_MODEM", NULL, WIFI_PS_MIN_MODEM},
         {"PS_MAX_MODEM", NULL, WIFI_PS_MAX_MODEM},
@@ -572,9 +1204,16 @@ static const rotable_Reg reg_wlan[] =
         {"AUTH_WPA_WPA2_PSK", NULL, WIFI_AUTH_WPA_WPA2_PSK},
         {"AUTH_WPA2_ENTERPRISE", NULL, WIFI_AUTH_WPA2_ENTERPRISE},
         {"AUTH_WPA3_PSK", NULL, WIFI_AUTH_WPA3_PSK},
-        {"AUTH_WPA3_PSK", NULL, WIFI_AUTH_WPA3_PSK},
         {"AUTH_WPA2_WPA3_PSK", NULL, WIFI_AUTH_WPA2_WPA3_PSK},
         {"AUTH_WAPI_PSK", NULL, WIFI_AUTH_WAPI_PSK},
+
+        {"P11B", NULL, WIFI_PROTOCOL_11B},
+        {"P11G", NULL, WIFI_PROTOCOL_11G},
+        {"P11N", NULL, WIFI_PROTOCOL_11N},
+        {"LR", NULL, WIFI_PROTOCOL_LR},
+
+        {"HT20", NULL, WIFI_BW_HT20},
+        {"HT40", NULL, WIFI_BW_HT40},
 
         {NULL, NULL, 0}};
 

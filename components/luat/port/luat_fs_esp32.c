@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "luat_base.h"
 #include "luat_malloc.h"
 #include "luat_fs.h"
@@ -33,9 +39,9 @@ extern const struct luat_vfs_filesystem vfs_fs_luadb;
 #endif
 #endif
 
-static void *map_ptr;
+static const void *map_ptr;
 static spi_flash_mmap_handle_t map_handle;
-static esp_partition_t * partition;
+static const esp_partition_t * partition;
 // 文件系统初始化函数
 esp_vfs_spiffs_conf_t spiffs_conf = {
     .base_path = "/spiffs",
@@ -101,7 +107,7 @@ int luat_fs_init(void)
   // TODO 支持OTA, 通过切换分区的方式
   partition = esp_partition_find_first(0x5A, 0x5A, "script");
   if (partition != NULL) {
-    ESP_LOGE("vfs", "found script partition %08X %08X", partition->address, (uint32_t)luat_vfs_reg);
+    ESP_LOGI("vfs", "found script partition %08X %08X", partition->address, (uint32_t)luat_vfs_reg);
 #ifdef LUAT_USE_OTA
     //OTA检测升级
     luat_ota(0);

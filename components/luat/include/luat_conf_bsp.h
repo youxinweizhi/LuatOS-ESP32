@@ -1,6 +1,15 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifndef LUAT_CONF_BSP
 #define LUAT_CONF_BSP
-#define LUAT_BSP_VERSION "V0001"
+#define LUAT_BSP_VERSION "V0003-BETA"
+
+// ESP32系列开发中标识
+#define ESP_BETA_VERSION 1
 
 #define LUAT_MODULE_SEARCH_PATH   "/spiffs/%s.luac", "/spiffs/%s.lua",\
   "/luadb/%s.luac", "/luadb/%s.lua",\
@@ -27,20 +36,23 @@
 #define LUAT_USE_ADC  1
 #define LUAT_USE_PWM  1
 #define LUAT_USE_PWM2  1
-// #define LUAT_USE_RMT 1
+#define LUAT_USE_RMT 1
+#define LUAT_USE_WDT 1
 
 #define LUAT_USE_WLAN 1
 #define LUAT_USE_ESPNOW 1
 #define LUAT_USE_ESP32LIB 1
+#define LUAT_USE_ESP32_SDMMC 1
 #define LUAT_USE_SOCKET 1
 #define LUAT_USE_NTP 1
-// #define LUAT_USE_LWIP 1
 #define LUAT_USE_BLE 1
 #define LUAT_USE_ESPHTTP 1
 #define LUAT_USE_ESPMQTT 1
+#define LUAT_USE_ESPWEBSOCKET 1
 #define LUAT_USE_MCU  1
 #define LUAT_USE_RTC 1
-
+// #define LUAT_USE_ESPSSL 1
+#define LUAT_USE_TJPGD
 
 //----------------------------
 // 常用工具库, 按需启用, cjson和pack是强烈推荐启用的
@@ -52,8 +64,10 @@
 #define LUAT_USE_FS  1
 #define LUAT_USE_SENSOR  1
 #define LUAT_USE_SFUD  1
+#define LUAT_USE_MINIZ 1
 // 性能测试,跑完就是玩,不要与lvgl一起启用,生产环境的固件别加这个库
 // #define LUAT_USE_COREMARK 1
+// #define LUAT_USE_FATFS 1
 
 //----------------------------
 // 高通字体, 需配合芯片使用
@@ -62,11 +76,11 @@
 
 //----------------------------
 // 高级功能, 其中shell是推荐启用, 除非你打算uart0也读数据
-// #define LUAT_USE_SHELL 1
+#define LUAT_USE_SHELL 1
 // 高级功能, debug
-// #define LUAT_USE_DBG 1
+#define LUAT_USE_DBG 1
 // FDB 提供kv数据库, 与nvm库类似
-// #define LUAT_USE_FDB 1
+#define LUAT_USE_FDB 1
 #define LUAT_USE_OTA
 #define UPDATE_BIN_PATH "/spiffs/update.bin"
 

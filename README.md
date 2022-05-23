@@ -6,7 +6,7 @@
 
 尝试给ESP32适配一个[LuatOS](https://gitee.com/openLuat/LuatOS)，只是为了学习，个人项目，希望有更多的朋友来一起贡献。
 
-目前C3、S3基于 ESP-IDF release/v4.4 分支
+目前C3、S3基于 ESP-IDFV4.4.1
 
 当前分支ESP32C3/ESP32S3，为主力版本。
 
@@ -23,8 +23,9 @@
 │  │  ├─freertos	(freertos移植层)
 │  │  ├─include		(用户头文件目录)
 │  │  └─port		(接口移植目录)
-│  └─net		
-│      └─binding	(lwip接口)
+│  ├─led_strip		(ws2812库)
+│  ├─libhelix-mp3	(mp3解码库)
+│  ├─miniz			(压缩库)
 ├─demo				(lua示例)
 ├─doc				(开发相关文档)
 ├─img				(介绍用相关图片)
@@ -36,10 +37,10 @@
 └─userdoc			(用户文档)
 ```
 
-##### 快速上手：
+##### 快速编译上手：
 
-1. 参考乐鑫文档安装ESP-IDF。(https://docs.espressif.com/projects/esp-idf/zh_CN/release-v4.4/esp32c3/get-started/index.html) 国内用户可以选择Gitee上的镜像库(https://gitee.com/EspressifSystems/esp-idf) 进行安装。
-2. 克隆本仓库和luatos主仓库(https://gitee.com/openLuat/LuatOS)到同级目录下
+1. 参考乐鑫文档安装ESP-IDF[文档链接](https://docs.espressif.com/projects/esp-idf/zh_CN/release-v4.4/esp32c3/get-started/index.html) ,国内用户可以选择Gitee上的[镜像库](https://gitee.com/EspressifSystems/esp-idf) 进行安装。
+2. 克隆本仓库和[luatos主仓库](https://gitee.com/openLuat/LuatOS) 到同级目录下
 3. 进入LuatOS-ESP32仓库 执行`idf.py set-target esp32c3` `idf.py build`进行编译
 
 ```
@@ -50,9 +51,9 @@
 
 ## 2、参与方式
 
-[UserGuide-VSC](./doc/userguide.md)
+使用VisualStudio Code [UserGuide-VSC](./doc/userguide.md)
 
-[UserGuide-Clion](./doc/UserGuideCilon.md)
+使用Clion [UserGuide-Clion](./doc/UserGuideCilon.md)
 
 欢迎提issue和pr帮助项目进步。
 
@@ -61,6 +62,8 @@ ESP32开发QQ群：667220396
 LuatOS开发QQ群：1061642968
 
 ## 3、相关文档
+
+[API-DOC](./apidoc)
 
 [Support](./doc/SUPPORT.md)
 
@@ -74,7 +77,7 @@ LuatOS开发QQ群：1061642968
 
 - [LuatOS](https://gitee.com/openLuat/LuatOS) ：合宙LuatOS是运行在嵌入式硬件的实时操作系统,用户编写lua代码就可完成各种功能
 
-- [ESPRESSIF ](https://www.espressif.com/): 乐鑫科技官网，提供高性价比高可玩性的ESP32系列产品
+- [ESPRESSIF ](https://www.espressif.com/): 乐鑫科技，提供高性价比高可玩性的ESP32系列产品
 
 - [Wendal](https://gitee.com/wendal) ：技术大佬，LuatOS领头人
 

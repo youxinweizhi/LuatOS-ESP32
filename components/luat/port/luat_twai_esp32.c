@@ -1,4 +1,10 @@
 /*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
 @module  twai
 @summary esp专用库twai
 @version 1.0
@@ -47,7 +53,7 @@ static int l_twai_setup(lua_State *L)
 #else
 #error "TWAI SETUP ERROR Please make sure the target is esp32c3 or esp32s3"
 #endif
-    ESP_ERROR_CHECK(twai_driver_install(&g_config, &t_config, &f_config));
+    twai_driver_install(&g_config, &t_config, &f_config); //todo error check
     err = twai_start();
     lua_pushboolean(L, err = ESP_OK ? true : false);
     return 1;
@@ -63,7 +69,7 @@ twai.close()
 static int l_twai_close(lua_State *L)
 {
     esp_err_t err = -1;
-    ESP_ERROR_CHECK(twai_stop());
+    twai_stop(); //todo error check
     err = twai_driver_uninstall();
     lua_pushboolean(L, err = ESP_OK ? true : false);
     return 1;
@@ -105,7 +111,7 @@ static int l_twai_recv(lua_State *L)
 {
     esp_err_t err = -1;
     twai_message_t message = {0};
-    err = twai_receive(&message, 10 / portTICK_RATE_MS);
+    err = twai_receive(&message, 100 / portTICK_RATE_MS);
     if (err == ESP_OK)
     {
         if (message.identifier == luaL_checkinteger(L, 1))
@@ -137,7 +143,7 @@ local arg = twai.getAlerts()
 static int l_twai_get_alerts(lua_State *L)
 {
     uint32_t alerts = 0;
-    twai_read_alerts(&alerts, 10 / portTICK_RATE_MS);
+    twai_read_alerts(&alerts, 100 / portTICK_RATE_MS);
     lua_pushinteger(L, alerts);
     return 1;
 }

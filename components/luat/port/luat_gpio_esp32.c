@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "luat_base.h"
 #include "luat_gpio.h"
 #include "freertos/FreeRTOS.h"
@@ -109,4 +115,8 @@ void luat_gpio_close(int pin)
     {
         gpio_reset_pin(pin);
     }
+}
+
+void luat_gpio_pulse(int pin, uint16_t delay_ns, uint8_t *level, uint16_t len) {
+
 }

@@ -198,8 +198,64 @@ Add:
 Update:
 
 1. 优化mac获取方式
+
 2. 完善ap模式
+
 3. ESP-IDF更新到4.4release
+
 4. wifi sta模式新增底层自动重连机制
+
 5. 完善demo
+
 6. 完善userdoc
+
+
+## 2022.03.16
+
+### ESP32 V0001
+
+ESP32C3正式版发布，S3会在后续版本稳定后发布
+
+Warning:日志波特率已更改为921600，支持DBG调试，请注意修改串口工具。
+
+已支持：GPIO,ADC,IIC,SPI,PWM,SDMMC,WIFI,BLE,ESPNOW,SOCKET,HTTP,MQTT,NTP
+
+Feature: I2S,TWAI,WDT,NIMBLE
+
+感谢每一位对本项目支持的大佬，经过多月迭代已具备正式版发版条件，后续本项目会持续更新新特性，尽情期待！
+
+## 2022.04.29
+
+### ESP32 V0002
+
+本次发布ESP32C3 ESP32S3版本固件
+
+Fix:
+
+1. wlan.setmode多次调用引起的崩溃
+2. espnow初始化回调出错
+3. i2c读写概率性出错
+4. spi错误处理
+5. uart0参数设置的报错
+6. socket库udp通讯失败问题
+7. 支持1ms延时
+
+Add:
+
+1. ws2812驱动,隶属于rmt库
+2. 使能SSL通讯
+3. miniz压缩解压库
+4. i2s库
+5. mp3player播放库,隶属于i2s
+6. websocket client库
+7. esp32.errToName 快速查看底层报错
+8. wifi支持ready scan
+9. wdt看门狗库
+10. mcu支持设置运行频率
+11. socket库支持server端
+
+Update:
+
+1. ESP-IDF版本升级v4.4.1
+
+其余更新请参考主库进度

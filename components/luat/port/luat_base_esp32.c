@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "luat_base.h"
 #include "luat_malloc.h"
 #include "luat_msgbus.h"
@@ -32,6 +38,9 @@ LUAMOD_API int luaopen_esphttp(lua_State *L);
 LUAMOD_API int luaopen_espmqtt(lua_State *L);
 LUAMOD_API int luaopen_i2s(lua_State *L);
 LUAMOD_API int luaopen_twai(lua_State *L);
+LUAMOD_API int luaopen_sdmmc(lua_State *L);
+LUAMOD_API int luaopen_miniz(lua_State *L);
+LUAMOD_API int luaopen_espws(lua_State *L);
 
 static const luaL_Reg loadedlibs[] = {
     {"_G", luaopen_base},               // _G
@@ -72,7 +81,7 @@ static const luaL_Reg loadedlibs[] = {
 #ifdef LUAT_USE_SPI
     {"spi", luaopen_spi}, // SPI操作
 #endif
-#ifdef LUAT_USE_TWAI    
+#ifdef LUAT_USE_TWAI
     {"twai", luaopen_twai}, // twai操作
 #endif
 #ifdef LUAT_USE_I2S
@@ -102,6 +111,9 @@ static const luaL_Reg loadedlibs[] = {
 #ifdef LUAT_USE_RTC
     {"rtc", luaopen_rtc}, // 实时时钟
 #endif
+#ifdef LUAT_USE_WDT
+    {"wdt", luaopen_wdt},
+#endif
 //-----------------------------------------------------------------------
 // 工具库, 按需选用
 #ifdef LUAT_USE_CRYPTO
@@ -129,7 +141,7 @@ static const luaL_Reg loadedlibs[] = {
     {"sfud", luaopen_sfud}, // sfud
 #endif
 #ifdef LUAT_USE_WLAN
-    {"wlan", luaopen_wlan}, //wifi联网操作
+    {"wlan", luaopen_wlan}, // wifi联网操作
 #endif
 #ifdef LUAT_USE_ESPNOW
     {"espnow", luaopen_espnow}, // espnow操作
@@ -137,14 +149,14 @@ static const luaL_Reg loadedlibs[] = {
 #ifdef LUAT_USE_ESP32LIB
     {"esp32", luaopen_esp32}, // esp32专用库
 #endif
+#ifdef LUAT_USE_ESP32_SDMMC
+    {"sdmmc", luaopen_sdmmc}, // esp32 sdmmc专用库
+#endif
 #ifdef LUAT_USE_SOCKET
     {"socket", luaopen_socket}, // socket
 #endif
 #ifdef LUAT_USE_NTP
     {"ntp", luaopen_ntp}, // ntp
-#endif
-#ifdef LUAT_USE_LWIP
-    {"lwip", luaopen_lwip}, // lwip操作
 #endif
 #ifdef LUAT_USE_BLE
     {"ble", luaopen_ble}, // ble操作
@@ -155,10 +167,15 @@ static const luaL_Reg loadedlibs[] = {
 #ifdef LUAT_USE_ESPMQTT
     {"espmqtt", luaopen_espmqtt}, // espmqtt
 #endif
+#ifdef LUAT_USE_ESPWEBSOCKET
+    {"espws", luaopen_espws}, // espws
+#endif
 #ifdef LUAT_USE_LVGL
     {"lvgl", luaopen_lvgl}, // lvgl
 #endif
-
+#ifdef LUAT_USE_MINIZ
+    {"miniz", luaopen_miniz},
+#endif
 //-----------------------------------------------------------------------
 // 显示库
 #ifdef LUAT_USE_LVGL
@@ -190,6 +207,12 @@ static const luaL_Reg loadedlibs[] = {
 #ifdef LUAT_USE_COREMARK
     {"coremark", luaopen_coremark},
 #endif
+#ifdef LUAT_USE_FATFS
+    {"fatfs", luaopen_fatfs},
+#endif
+#ifdef LUAT_USE_YMODEM
+    {"ymodem", luaopen_ymodem},
+#endif
     {NULL, NULL}};
 
 // 按不同的rtconfig加载不同的库函数
@@ -197,16 +220,16 @@ void luat_openlibs(lua_State *L)
 {
     // 初始化队列服务
     luat_msgbus_init();
-    //print_list_mem("done>luat_msgbus_init");
-    // 加载系统库
+    // print_list_mem("done>luat_msgbus_init");
+    //  加载系统库
     const luaL_Reg *lib;
     /* "require" functions from 'loadedlibs' and set results to global table */
     for (lib = loadedlibs; lib->func; lib++)
     {
         luaL_requiref(L, lib->name, lib->func, 1);
         lua_pop(L, 1); /* remove lib */
-                       //extern void print_list_mem(const char* name);
-                       //print_list_mem(lib->name);
+                       // extern void print_list_mem(const char* name);
+        // print_list_mem(lib->name);
     }
 }
 
@@ -217,7 +240,7 @@ void luat_timer_us_delay(size_t us)
         ets_delay_us(us);
 }
 
-//esp32重启函数
+// esp32重启函数
 void luat_os_reboot(int code)
 {
     fflush(stdout);
@@ -241,17 +264,17 @@ void luat_os_standy(int timeout)
 
 void luat_os_entry_cri(void)
 {
-    //vPortEnterCritical();
+    // vPortEnterCritical();
 }
 
 void luat_os_exit_cri(void)
 {
-    //vPortExitCritical();
+    // vPortExitCritical();
 }
 
 void luat_meminfo_sys(size_t *total, size_t *used, size_t *max_used)
 {
-    *used = esp_get_free_heap_size();
-    *max_used = esp_get_free_heap_size();
     *total = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    *used = *total - esp_get_free_heap_size();
+    *max_used = *total - esp_get_minimum_free_heap_size();
 }

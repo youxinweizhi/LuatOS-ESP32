@@ -1,4 +1,10 @@
 /*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
 @module  ntp
 @summary esp32专用ntp库
 @version 1.0
@@ -22,6 +28,15 @@ static int l_ntp_handler(lua_State *L, void *ptr)
     if (msg->arg1 == 1)
     {
         lua_getglobal(L, "sys_pub");
+/*
+@sys_pub ntp
+ntp更新完成
+NTP_SYNC_DONE
+@usage
+sys.subscribe("NTP_SYNC_DONE", function ()
+    log.info("ntp", "NTP_SYNC_DONE")
+end)
+*/
         lua_pushstring(L, "NTP_SYNC_DONE");
         lua_call(L, 1, 0);
     }

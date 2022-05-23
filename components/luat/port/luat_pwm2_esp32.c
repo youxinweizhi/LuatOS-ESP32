@@ -1,4 +1,10 @@
 /*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
 @module  pwm2
 @summary esp32专用pwm2库
 @version 1.0
@@ -27,7 +33,7 @@ pwm2初始化
 */
 static int l_pwm2_init(lua_State *L)
 {
-    esp_err_t err = -1;
+    // esp_err_t err = -1;
     int pwm_timer = luaL_checkinteger(L, 1);
     int pwm_channel = luaL_checkinteger(L, 2);
     int pwm_pin = luaL_checkinteger(L, 3);
@@ -41,8 +47,7 @@ static int l_pwm2_init(lua_State *L)
     conf.timer_num = pwm_timer,
     conf.freq_hz = pwm_period,
     conf.clk_cfg = LEDC_AUTO_CLK,
-    err = ledc_timer_config(&conf);
-    ESP_ERROR_CHECK(err);
+    ledc_timer_config(&conf);
 
     ledc_channel_config_t ledc_channel = {0};
     ledc_channel.gpio_num = pwm_pin,
@@ -51,8 +56,7 @@ static int l_pwm2_init(lua_State *L)
     ledc_channel.timer_sel = pwm_timer,
     ledc_channel.duty = 0,
     ledc_channel.hpoint = 0,
-    err = ledc_channel_config(&ledc_channel);
-    ESP_ERROR_CHECK(err);
+    ledc_channel_config(&ledc_channel);
 
     if (pwm_fade)
     {
@@ -79,9 +83,9 @@ static int l_pwm2_set_duty(lua_State *L)
     int pwm_duty = luaL_checkinteger(L, 2);
 
     err = ledc_set_duty(LEDC_LOW_SPEED_MODE, pwm_channel, pwm_duty);
-    ESP_ERROR_CHECK(err);
+    //todo,ESP_ERROR_CHECK(err);
     err = ledc_update_duty(LEDC_LOW_SPEED_MODE, pwm_channel);
-    ESP_ERROR_CHECK(err);
+    //todo,ESP_ERROR_CHECK(err);
 
     lua_pushinteger(L, err);
     return 1;
@@ -107,9 +111,9 @@ static int l_pwm2_set_fade_with_time(lua_State *L)
     int pwm_wait = luaL_optinteger(L, 4, 1);
 
     err = ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, pwm_channel, pwm_duty, pwm_ms);
-    ESP_ERROR_CHECK(err);
+    //todo,ESP_ERROR_CHECK(err);
     err = ledc_fade_start(LEDC_LOW_SPEED_MODE, pwm_channel, pwm_wait);
-    ESP_ERROR_CHECK(err);
+    //todo,ESP_ERROR_CHECK(err);
 
     lua_pushinteger(L, err);
     return 1;

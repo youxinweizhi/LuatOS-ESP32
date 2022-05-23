@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2021-2022 Darren <1912544842@qq.com>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "luat_base.h"
 #include "luat_pwm.h"
 
@@ -55,8 +61,8 @@ int luat_pwm_setup(luat_pwm_conf_t *conf)
     }
 
     // printf("pin:%d:pulse:%d\n", pc, conf->pulse);
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, pc, conf->pulse));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, pc));
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, pc, conf->pulse); //todo error check
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, pc); //todo error check
     return 0;
 }
 int luat_pwm_close(int channel)
